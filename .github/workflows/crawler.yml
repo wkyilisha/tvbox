@@ -12,7 +12,7 @@ permissions:
 jobs:
   crawl:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25   # 代理验证需额外时间，适当放宽
 
     steps:
       - name: Checkout repository
@@ -30,7 +30,7 @@ jobs:
       - name: Run crawler
         run: python ZB.py
         env:
-          TOTAL_PAGES: 1    # 修改此处数字可调整抓取页数
+          TOTAL_PAGES: 1
 
       - name: Commit and push results
         run: |
