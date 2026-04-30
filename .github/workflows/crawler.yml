@@ -1,0 +1,37 @@
+name: Daily IPTV Crawler
+
+on:
+  schedule:
+    # 北京时间每天早上8点执行（UTC+8，对应UTC 0点）
+    - cron: '0 0 * * *'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Run crawler
+        run: python ZB.py
+        # 如果你希望自定义页数，可在 run 命令中传参数，或在 crawler.py 中修改 total_pages
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: iptv-results
+          path: |
+            iptvhote.txt
+            iptvpmigu.txt
+          retention-days: 7   # 产物保留7天
