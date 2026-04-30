@@ -1,59 +1,58 @@
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs
 import re
 import time
 import random
-import os                     # <-- 添加这一行
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
+import os
 
-# 随机 User-Agent 池（防止指纹过于固定）
+# 可选 User-Agent 池，但 cloudscraper 会自动覆盖大部分场景，保留备用
 USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 ]
 
-def get_headers(referer=None):
+def create_scraper():
+    """创建 cloudscraper 实例，模拟 Chrome 浏览器绕过 Cloudflare"""
+    scraper = cloudscraper.create_scraper(
+        browser={
+            'browser': 'chrome',
+            'platform': 'windows',
+            'mobile': False
+        },
+        delay=10  # 遇到 challenge 时等待时间
+    )
+    # 先预热，访问首页获取 cookies
+    try:
+        scraper.get('https://tonkiang.us/', timeout=20)
+        time.sleep(1)
+    except Exception as e:
+        print(f"预热首页异常（不影响后续）: {e}")
+    return scraper
+
+def fetch_html(scraper, url, referer, retries=3):
+    """带重试的请求函数，返回 HTML 文本"""
     headers = {
         'User-Agent': random.choice(USER_AGENTS),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Cache-Control': 'max-age=0',
-        'Upgrade-Insecure-Requests': '1',
-        'Connection': 'keep-alive',
+        'Referer': referer,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
     }
-    if referer:
-        headers['Referer'] = referer
-    return headers
-
-def create_session():
-    """创建带重试和会话保持的 Session"""
-    session = requests.Session()
-    retry = Retry(total=3, backoff_factor=1, status_forcelist=[403, 500, 502, 503, 504])
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    # 先访问首页，获取可能需要的 cookie 或 token
-    try:
-        session.get('https://tonkiang.us/', headers=get_headers(referer='https://tonkiang.us/'), timeout=15)
-        time.sleep(1)
-    except:
-        pass
-    return session
-
-def fetch_html(session, url, referer):
-    """使用 session 请求 HTML"""
-    try:
-        response = session.get(url, headers=get_headers(referer), timeout=20)
-        response.raise_for_status()
-        response.encoding = response.apparent_encoding
-        return response.text
-    except requests.exceptions.RequestException as e:
-        print(f"请求失败: {url}, 错误: {e}")
-        return None
+    for attempt in range(1, retries + 1):
+        try:
+            resp = scraper.get(url, headers=headers, timeout=25)
+            if resp.status_code == 200:
+                resp.encoding = resp.apparent_encoding
+                return resp.text
+            else:
+                print(f"  {url} 返回状态码 {resp.status_code}，第 {attempt}/{retries} 次")
+        except Exception as e:
+            print(f"  请求异常: {e}，第 {attempt}/{retries} 次")
+        if attempt < retries:
+            wait = 5 * attempt
+            print(f"  等待 {wait} 秒后重试...")
+            time.sleep(wait)
+    return None
 
 def parse_ip_list(html):
     """解析列表页，提取 IP、地区、运营商"""
@@ -126,8 +125,8 @@ def parse_channel_page(html):
             channels.append({'channel_name': channel_name, 'm3u8_url': m3u8_url})
     return channels
 
-def crawl_source(session, base_url, list_php, total_pages, output_file):
-    """抓取指定来源的所有频道，并写入文件"""
+def crawl_source(scraper, base_url, list_php, total_pages, output_file):
+    """抓取指定来源的所有频道，写入文件"""
     list_base = f'{base_url}/{list_php}'
     all_lines = []
 
@@ -140,14 +139,14 @@ def crawl_source(session, base_url, list_php, total_pages, output_file):
             referer = list_base if page == 2 else f'{list_base}?page={page-1}&iphone16=&code='
 
         print(f"[{list_php}] 正在抓取第 {page} 页: {list_url}")
-        list_html = fetch_html(session, list_url, referer)
+        list_html = fetch_html(scraper, list_url, referer)
         if not list_html:
             print(f"[{list_php}] 第 {page} 页获取失败，跳过")
             continue
 
         entries = parse_ip_list(list_html)
         print(f"[{list_php}] 第 {page} 页提取到 {len(entries)} 个有效条目")
-        time.sleep(random.uniform(1.5, 3))  # 随机延迟，更自然
+        time.sleep(random.uniform(2, 4))
 
         for entry in entries:
             ip, tk, p = entry['ip'], entry['tk'], entry['p']
@@ -156,7 +155,7 @@ def crawl_source(session, base_url, list_php, total_pages, output_file):
             channel_ref = f"{base_url}/channellist.html?ip={ip}&tk={tk}&p={p}"
 
             print(f"  [{list_php}] 抓取 {region_isp} 的频道...")
-            detail_html = fetch_html(session, detail_url, channel_ref)
+            detail_html = fetch_html(scraper, detail_url, channel_ref, retries=2)
             if not detail_html:
                 continue
 
@@ -166,7 +165,7 @@ def crawl_source(session, base_url, list_php, total_pages, output_file):
                 all_lines.append(f"{region_isp},#genre#")
                 for ch in channels:
                     all_lines.append(f"{ch['channel_name']},{ch['m3u8_url']}")
-            time.sleep(random.uniform(0.5, 1.2))
+            time.sleep(random.uniform(0.8, 1.5))
 
     if all_lines:
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -175,11 +174,10 @@ def crawl_source(session, base_url, list_php, total_pages, output_file):
     else:
         print(f"[{list_php}] 未获取到有效数据，{output_file} 留空")
 
-def run_crawler(total_pages=3):
-    """主函数，使用统一 session 爬取两个源"""
+def run_crawler(total_pages=1):
+    """主函数，使用 cloudscraper 爬取两个源"""
     base_url = 'https://tonkiang.us'
-    # 创建会话，预先访获取 cookie
-    session = create_session()
+    scraper = create_scraper()
 
     sources = [
         {'php': 'iptvhotelx.php', 'output': 'iptvhote.txt'},
@@ -188,10 +186,9 @@ def run_crawler(total_pages=3):
 
     for source in sources:
         print(f"\n开始抓取 {source['php']} ...")
-        crawl_source(session, base_url, source['php'], total_pages, source['output'])
+        crawl_source(scraper, base_url, source['php'], total_pages, source['output'])
         print(f"{source['php']} 抓取结束\n")
 
 if __name__ == '__main__':
-    # 可通过环境变量 TOTAL_PAGES 控制页数，默认 3
     pages = int(os.getenv('TOTAL_PAGES', 1))
     run_crawler(total_pages=pages)
