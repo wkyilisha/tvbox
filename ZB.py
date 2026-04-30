@@ -162,4 +162,4 @@ def run_crawler(total_pages=3):
         print(f"{source['php']} 抓取结束\n")
 
 if __name__ == '__main__':
-    run_crawler(total_pages=3)  # 修改此处数字可同时调整两个源的抓取页数
+    run_crawler(total_pages=1)  # 修改此处数字可同时调整两个源的抓取页数
