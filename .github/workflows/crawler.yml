@@ -2,17 +2,13 @@ name: Daily IPTV Crawler
 
 on:
   schedule:
-    # 北京时间每天早上8点 (UTC+8 -> UTC 0点)
+    # 北京时间每天早上8点执行（UTC+8，对应UTC 0点）
     - cron: '0 0 * * *'
   workflow_dispatch:  # 允许手动触发
-
-permissions:
-  contents: write      # 允许推送文件到仓库
 
 jobs:
   crawl:
     runs-on: ubuntu-latest
-    timeout-minutes: 25   # 代理验证需额外时间，适当放宽
 
     steps:
       - name: Checkout repository
@@ -25,17 +21,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install cloudscraper beautifulsoup4
+          pip install requests beautifulsoup4
 
       - name: Run crawler
         run: python ZB.py
-        env:
-          TOTAL_PAGES: 1
+        # 如果你希望自定义页数，可在 run 命令中传参数，或在 crawler.py 中修改 total_pages
 
-      - name: Commit and push results
-        run: |
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add iptvhote.txt iptvpmigu.txt
-          git diff --staged --quiet || git commit -m "Update IPTV lists [skip ci]"
-          git push
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: iptv-results
+          path: |
+            iptvhote.txt
+            iptvpmigu.txt
+          retention-days: 7   # 产物保留7天
