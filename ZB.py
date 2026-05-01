@@ -100,7 +100,7 @@ def parse_channel_page(html):
     return channels
 
 def crawl_source(base_url, list_php, total_pages, output_file):
-    """抓取指定来源的所有频道，并写入文件"""
+    """抓取指定来源的所有频道，并写入文件（每页最多取3个有效IP）"""
     list_base = f'{base_url}/{list_php}'
     all_lines = []
 
@@ -119,7 +119,12 @@ def crawl_source(base_url, list_php, total_pages, output_file):
             continue
 
         entries = parse_ip_list(list_html)
-        print(f"[{list_php}] 第 {page} 页提取到 {len(entries)} 个有效条目")
+        print(f"[{list_php}] 第 {page} 页原始提取到 {len(entries)} 个有效条目")
+
+        # 每页只取前3个有效的IP地址
+        entries = entries[:3]
+        print(f"[{list_php}] 第 {page} 页限制后处理 {len(entries)} 个IP")
+
         time.sleep(1)
 
         for entry in entries:
@@ -148,12 +153,12 @@ def crawl_source(base_url, list_php, total_pages, output_file):
     else:
         print(f"[{list_php}] 未获取到有效数据，{output_file} 留空")
 
-def run_crawler(total_pages=3):
-    """主函数，依次爬取两个源，生成两个文件"""
+def run_crawler(total_pages=1):
+    """主函数，依次爬取两个源，每个源每页最多3个IP，生成两个文件"""
     base_url = 'https://tonkiang.us'
     sources = [
-        {'php': 'iptvhotelx.php', 'output': 'iptvhote.txt'},   # 您指定的文件名
-        {'php': 'iptvproxy.php',  'output': 'iptvpmigu.txt'}   # 您指定的文件名
+        {'php': 'iptvhotelx.php', 'output': 'iptvhote.txt'},
+        {'php': 'iptvproxy.php',  'output': 'iptvpmigu.txt'}
     ]
 
     for source in sources:
@@ -162,4 +167,5 @@ def run_crawler(total_pages=3):
         print(f"{source['php']} 抓取结束\n")
 
 if __name__ == '__main__':
-    run_crawler(total_pages=1)  # 修改此处数字可同时调整两个源的抓取页数
+    # 可根据需要调整总页数，每页只取前3个IP
+    run_crawler(total_pages=1)
