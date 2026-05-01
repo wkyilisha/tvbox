@@ -215,4 +215,4 @@ def run_crawler(total_pages=1):
 
 
 if __name__ == '__main__':
-    run_crawler(total_pages=1)   # 你可以改成2或3，但建议先用1测试
+    run_crawler(total_pages=2)   # 你可以改成2或3，但建议先用1测试
