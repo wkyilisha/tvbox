@@ -3,28 +3,76 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs
 import re
 import time
+import ssl
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+from urllib3.util.ssl_ import create_urllib3_context
 
-def fetch_html(url, referer, headers=None):
-    """通用请求函数"""
+# ---------------------- 自定义 TLS Adapter 强制 TLSv1.2 ----------------------
+class TLSAdapter(HTTPAdapter):
+    """强制使用 TLSv1.2，解决部分服务器在 GitHub Actions 环境的握手失败问题"""
+    def init_poolmanager(self, *args, **kwargs):
+        ctx = create_urllib3_context()
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        kwargs['ssl_context'] = ctx
+        return super().init_poolmanager(*args, **kwargs)
+
+# ---------------------- 增强的网络请求函数 ----------------------
+def fetch_html(url, referer, headers=None, max_retries=3):
+    """
+    增强版请求函数，适合 GitHub Actions 环境：
+    - 使用 Session 配置重试策略
+    - 强制 TLSv1.2
+    - 禁用证书验证（仅爬虫场景）
+    - 输出调试信息
+    """
     default_headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
     }
     if headers:
         default_headers.update(headers)
     if referer:
         default_headers['Referer'] = referer
 
+    # 创建带重试的 Session
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=max_retries,
+        backoff_factor=1,          # 重试间隔：1, 2, 4 秒
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["HEAD", "GET", "OPTIONS"]
+    )
+    http_adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", http_adapter)
+    session.mount("https://", TLSAdapter())   # 使用自定义 TLS 适配器
+
     try:
-        response = requests.get(url, headers=default_headers, timeout=15)
-        response.raise_for_status()
+        response = session.get(
+            url,
+            headers=default_headers,
+            timeout=(10, 30),     # (连接超时, 读取超时)
+            verify=False          # 跳过证书验证（仅用于爬虫）
+        )
+        # 调试输出（可在 GitHub Actions 日志中查看）
+        print(f"    [调试] {url} -> 状态码: {response.status_code}, 内容长度: {len(response.text)}")
+        if response.status_code != 200:
+            print(f"    [警告] 非200响应，预览: {response.text[:200]}")
+            return None
+
         response.encoding = response.apparent_encoding
         return response.text
     except requests.exceptions.RequestException as e:
-        print(f"请求失败: {url}, 错误: {e}")
+        print(f"    请求失败: {url}, 错误: {e}")
         return None
+    finally:
+        session.close()
 
+# ---------------------- 解析 IP 列表页 ----------------------
 def parse_ip_list(html):
     """解析列表页，提取IP、地区、运营商及参数"""
     soup = BeautifulSoup(html, 'html.parser')
@@ -70,6 +118,7 @@ def parse_ip_list(html):
         })
     return entries
 
+# ---------------------- 解析频道详情页 ----------------------
 def parse_channel_page(html):
     """解析频道详情页，提取频道名和m3u8地址"""
     soup = BeautifulSoup(html, 'html.parser')
@@ -99,6 +148,7 @@ def parse_channel_page(html):
             channels.append({'channel_name': channel_name, 'm3u8_url': m3u8_url})
     return channels
 
+# ---------------------- 抓取单个源的所有频道 ----------------------
 def crawl_source(base_url, list_php, total_pages, output_file):
     """抓取指定来源的所有频道，并写入文件"""
     list_base = f'{base_url}/{list_php}'
@@ -120,7 +170,7 @@ def crawl_source(base_url, list_php, total_pages, output_file):
 
         entries = parse_ip_list(list_html)
         print(f"[{list_php}] 第 {page} 页提取到 {len(entries)} 个有效条目")
-        time.sleep(1)
+        time.sleep(2)   # 加大延迟，避免请求过快
 
         for entry in entries:
             ip, tk, p = entry['ip'], entry['tk'], entry['p']
@@ -139,7 +189,7 @@ def crawl_source(base_url, list_php, total_pages, output_file):
                 all_lines.append(f"{region_isp},#genre#")
                 for ch in channels:
                     all_lines.append(f"{ch['channel_name']},{ch['m3u8_url']}")
-            time.sleep(0.5)
+            time.sleep(1)
 
     if all_lines:
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -148,12 +198,13 @@ def crawl_source(base_url, list_php, total_pages, output_file):
     else:
         print(f"[{list_php}] 未获取到有效数据，{output_file} 留空")
 
+# ---------------------- 主函数 ----------------------
 def run_crawler(total_pages=3):
-    """主函数，依次爬取两个源，生成两个文件"""
+    """依次爬取两个源，生成两个文件"""
     base_url = 'https://tonkiang.us'
     sources = [
-        {'php': 'iptvhotelx.php', 'output': 'iptvhote.txt'},   # 您指定的文件名
-        {'php': 'iptvproxy.php',  'output': 'iptvpmigu.txt'}   # 您指定的文件名
+        {'php': 'iptvhotelx.php', 'output': 'iptvhote.txt'},
+        {'php': 'iptvproxy.php',  'output': 'iptvpmigu.txt'}
     ]
 
     for source in sources:
@@ -162,4 +213,5 @@ def run_crawler(total_pages=3):
         print(f"{source['php']} 抓取结束\n")
 
 if __name__ == '__main__':
+    # 可根据需要修改 total_pages（例如抓取前3页）
     run_crawler(total_pages=1)
