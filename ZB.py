@@ -6,82 +6,67 @@ import time
 import random
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import urllib3
 
-# ---------------------- 代理池管理 ----------------------
-def fetch_free_proxies():
-    """
-    从免费代理网站获取代理列表（HTTP/HTTPS）
-    返回格式: ["ip:port", "ip:port", ...]
-    """
-    proxy_urls = [
-        "https://api.proxyscrape.com/?request=displayproxies&proxytype=http&timeout=5000",
-        "https://www.proxy-list.download/api/v1/get?type=http",
-        "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
-    ]
-    proxies = set()
-    for url in proxy_urls:
-        try:
-            r = requests.get(url, timeout=10)
-            if r.status_code == 200:
-                # 每行一个 ip:port
-                lines = r.text.strip().split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if re.match(r'\d+\.\d+\.\d+\.\d+:\d+', line):
-                        proxies.add(line)
-        except:
-            continue
-    return list(proxies)
+# 禁用 SSL 警告（仅用于爬虫场景）
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-def validate_proxy(proxy, test_url="https://httpbin.org/ip", timeout=8):
+# ---------------------- 代理池管理（使用 proxifly 免费代理列表）---------------------
+PROXY_TXT_URL = 'https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/all/data.txt'
+
+def fetch_and_update_proxy_list():
+    """从 proxifly CDN 直接获取最新代理列表，并验证可用性"""
+    try:
+        response = requests.get(PROXY_TXT_URL, timeout=10)
+        if response.status_code != 200:
+            print(f"[代理] 获取失败，状态码：{response.status_code}")
+            return []
+        # 解析 TXT 文件，每行一个代理
+        raw_proxies = response.text.strip().split('\n')
+        proxies = [p.strip() for p in raw_proxies if p.strip()]
+        if not proxies:
+            return []
+        print(f"[代理] 成功获取 {len(proxies)} 个代理，开始验证前20个...")
+        
+        valid_proxies = []
+        for proxy in proxies[:20]:   # 只取前20个验证，避免耗时过长
+            if verify_proxy(proxy):
+                valid_proxies.append(proxy)
+                print(f"  ✓ 可用代理: {proxy}")
+        if not valid_proxies:
+            print("[代理] 未验证到可用代理，将使用直连模式")
+        return valid_proxies
+    except Exception as e:
+        print(f"[代理] 请求异常: {e}")
+        return []
+
+def verify_proxy(proxy, test_url="https://httpbin.org/ip", timeout=5):
     """测试代理是否可用"""
     try:
-        response = requests.get(test_url, proxies={"http": f"http://{proxy}", "https": f"http://{proxy}"}, timeout=timeout)
+        proxies = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
+        response = requests.get(test_url, proxies=proxies, timeout=timeout, verify=False)
         return response.status_code == 200
     except:
         return False
 
-def get_valid_proxies(max_check=20):
-    """获取并验证可用的代理列表（最多返回 max_check 个）"""
-    print("[代理] 正在获取免费代理列表...")
-    all_proxies = fetch_free_proxies()
-    if not all_proxies:
-        print("[代理] 未获取到任何代理，将使用直连")
-        return []
-    print(f"[代理] 共获取 {len(all_proxies)} 个代理，开始验证...")
-    valid = []
-    for proxy in all_proxies[:max_check * 2]:  # 多取一些备用
-        if validate_proxy(proxy):
-            valid.append(proxy)
-            print(f"[代理] ✓ 可用: {proxy}")
-            if len(valid) >= max_check:
-                break
-        else:
-            print(f"[代理] ✗ 无效: {proxy}")
-    print(f"[代理] 验证完成，共获得 {len(valid)} 个可用代理")
-    return valid
-
 # 全局代理池（启动时获取一次）
 PROXY_LIST = []
-PROXY_INDEX = 0
 
 def init_proxy_pool():
+    """初始化全局代理池"""
     global PROXY_LIST
     if not PROXY_LIST:
-        PROXY_LIST = get_valid_proxies()
+        PROXY_LIST = fetch_and_update_proxy_list()
 
-def get_next_proxy():
-    """轮询获取下一个代理（简单轮询）"""
-    global PROXY_INDEX
+def get_random_proxy():
+    """随机获取一个代理"""
     if not PROXY_LIST:
         return None
-    proxy = PROXY_LIST[PROXY_INDEX % len(PROXY_LIST)]
-    PROXY_INDEX += 1
-    return proxy
+    return random.choice(PROXY_LIST)
 
-# ---------------------- 增强的网络请求函数（带代理） ----------------------
+# ---------------------- 增强的网络请求函数（带代理轮换）---------------------
 def fetch_html(url, referer, headers=None, max_retries=3):
-    """使用代理轮询请求，失败后自动切换代理重试"""
+    """使用代理轮询请求，失败后自动切换代理重试，最终降级到直连"""
     default_headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -95,28 +80,27 @@ def fetch_html(url, referer, headers=None, max_retries=3):
     if referer:
         default_headers['Referer'] = referer
 
-    # 确保代理池已初始化
-    init_proxy_pool()
+    init_proxy_pool()   # 确保代理池已初始化
 
     for attempt in range(max_retries):
-        proxy = get_next_proxy() if PROXY_LIST else None
+        proxy = get_random_proxy()
         proxies = None
+        proxy_display = "直连"
         if proxy:
             proxies = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
-            print(f"    [代理尝试 {attempt+1}] 使用 {proxy}")
-        else:
-            print(f"    [直连尝试 {attempt+1}] 无代理可用")
+            proxy_display = proxy
+
+        print(f"    [尝试 {attempt+1}] 使用 {proxy_display}")
 
         session = requests.Session()
-        # 设置重试策略（针对连接错误）
+        # 设置重试策略（连接层）
         retries = Retry(total=2, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504])
         session.mount('http://', HTTPAdapter(max_retries=retries))
         session.mount('https://', HTTPAdapter(max_retries=retries))
 
         try:
-            response = session.get(url, headers=default_headers, proxies=proxies, timeout=(10, 30))
+            response = session.get(url, headers=default_headers, proxies=proxies, timeout=(10, 30), verify=False)
             if response.status_code == 200:
-                print(f"    [成功] 状态码 {response.status_code}, 内容长度 {len(response.text)}")
                 response.encoding = response.apparent_encoding
                 return response.text
             else:
@@ -126,9 +110,9 @@ def fetch_html(url, referer, headers=None, max_retries=3):
         finally:
             session.close()
 
-        time.sleep(1)  # 重试前等待
+        time.sleep(1)   # 重试前等待
 
-    print(f"    [错误] 所有重试均失败: {url}")
+    print(f"    [错误] 所有尝试均失败: {url}")
     return None
 
 # ---------------------- 解析 IP 列表页 ----------------------
@@ -221,6 +205,7 @@ def crawl_source(base_url, list_php, total_pages, output_file):
         print(f"[{list_php}] 正在抓取第 {page} 页: {list_url}")
         list_html = fetch_html(list_url, referer)
         if not list_html:
+            print(f"[{list_php}] 第 {page} 页获取失败，跳过")
             continue
 
         entries = parse_ip_list(list_html)
