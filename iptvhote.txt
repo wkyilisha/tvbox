@@ -1,3 +1,5 @@
+黑龙江省哈尔滨市酒店 联通,#genre#
+,http://113.9.227.117:9003/hls/2099/index.m3u8
 山西省太原市酒店 联通,#genre#
 CCTV1,http://221.205.23.219:9003/hls/1/index.m3u8
 CCTV2,http://221.205.23.219:9003/hls/2/index.m3u8
@@ -89,39 +91,6 @@ CCTV14,http://153.3.81.69:9003/hls/14/index.m3u8
 新疆卫视,http://153.3.81.69:9003/hls/50/index.m3u8
 内蒙古卫视,http://153.3.81.69:9003/hls/51/index.m3u8
 test,http://153.3.81.69:9003/hls/100/index.m3u8
-河南省许昌市酒店 联通,#genre#
-CCTV-1,http://42.237.157.101:9003/hls/1/index.m3u8
-CCTV-3,http://42.237.157.101:9003/hls/3/index.m3u8
-CCTV-5,http://42.237.157.101:9003/hls/5/index.m3u8
-CCTV-6,http://42.237.157.101:9003/hls/6/index.m3u8
-CCTV-7,http://42.237.157.101:9003/hls/7/index.m3u8
-CCTV-8,http://42.237.157.101:9003/hls/8/index.m3u8
-CCTV-11,http://42.237.157.101:9003/hls/11/index.m3u8
-CCTV-14,http://42.237.157.101:9003/hls/14/index.m3u8
-河南都市,http://42.237.157.101:9003/hls/18/index.m3u8
-河南法治,http://42.237.157.101:9003/hls/20/index.m3u8
-河南新闻,http://42.237.157.101:9003/hls/22/index.m3u8
-河南新农村,http://42.237.157.101:9003/hls/24/index.m3u8
-河南文物宝库,http://42.237.157.101:9003/hls/26/index.m3u8
-北京卫视,http://42.237.157.101:9003/hls/31/index.m3u8
-天津卫视,http://42.237.157.101:9003/hls/32/index.m3u8
-山东卫视,http://42.237.157.101:9003/hls/33/index.m3u8
-安徽卫视,http://42.237.157.101:9003/hls/34/index.m3u8
-深圳卫视,http://42.237.157.101:9003/hls/35/index.m3u8
-湖北卫视,http://42.237.157.101:9003/hls/37/index.m3u8
-贵州卫视,http://42.237.157.101:9003/hls/41/index.m3u8
-辽宁卫视,http://42.237.157.101:9003/hls/42/index.m3u8
-重庆卫视,http://42.237.157.101:9003/hls/44/index.m3u8
-吉林卫视,http://42.237.157.101:9003/hls/48/index.m3u8
-甘肃卫视,http://42.237.157.101:9003/hls/51/index.m3u8
-青海卫视,http://42.237.157.101:9003/hls/53/index.m3u8
-内蒙古卫视,http://42.237.157.101:9003/hls/54/index.m3u8
-卡酷少儿,http://42.237.157.101:9003/hls/57/index.m3u8
-金鹰卡通,http://42.237.157.101:9003/hls/58/index.m3u8
-CHC高清电影,http://42.237.157.101:9003/hls/59/index.m3u8
-CHC动作电影,http://42.237.157.101:9003/hls/60/index.m3u8
-CHC家庭影院,http://42.237.157.101:9003/hls/61/index.m3u8
-河南卫视4K,http://42.237.157.101:9003/hls/100/index.m3u8
 四川省成都市酒店 电信,#genre#
 CCTV1-综合,http://221.237.106.208:85/tsfile/live/0001_1.m3u8?key=txiptv&playlive=1&authid=0
 CCTV2-财经,http://221.237.106.208:85/tsfile/live/0002_1.m3u8?key=txiptv&playlive=1&authid=0
