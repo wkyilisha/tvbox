@@ -130,6 +130,8 @@ CCTV17,http://221.232.197.185:7777/tsfile/live/0112_1.m3u8?key=txiptv&playlive=1
 东方卫视,http://221.232.197.185:7777/tsfile/live/0116_1.m3u8?key=txiptv&playlive=1&authid=0
 贵州卫视,http://221.232.197.185:7777/tsfile/live/0120_1.m3u8?key=txiptv&playlive=1&authid=0
 CGTN,http://221.232.197.185:7777/tsfile/live/0109_1.m3u8?key=txiptv&playlive=1&authid=0
+黑龙江省哈尔滨市酒店 联通,#genre#
+,http://113.9.249.203:9003/hls/2099/index.m3u8
 湖北省武汉市酒店 电信,#genre#
 CCTV1-综合,http://221.232.199.116:7777/tsfile/live/0001_1.m3u8?key=txiptv&playlive=1&authid=0
 CCTV2-财经,http://221.232.199.116:7777/tsfile/live/0002_1.m3u8?key=txiptv&playlive=1&authid=0
